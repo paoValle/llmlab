@@ -1,0 +1,38 @@
+[package]
+name = "llmlab"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "What the money and failure behaviour of an LLM gateway actually is, measured: budget, failover, metering, no network."
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/paoValle/llmlab"
+keywords = ["llm", "gateway", "budget", "benchmark", "reproducibility"]
+categories = ["development-tools::testing"]
+
+# The gateway is a dependency, not a copy: this lab measures the real code.
+# Cargo.lock pins the exact revision it measured.
+[dependencies]
+llmgateway = { git = "https://github.com/paoValle/llmgateway" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+futures-util = "0.3"
+serde_json = "1"
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+# Same allowances as llmgateway, plus the precision casts a readable report needs.
+unwrap_used = "allow"
+expect_used = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"

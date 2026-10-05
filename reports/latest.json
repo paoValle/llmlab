@@ -1,0 +1,66 @@
+{
+  "capped": {
+    "cap_micro_usd": 7,
+    "denied": 5,
+    "held_micro_usd": 0,
+    "provider_calls": 5,
+    "reservation_surplus_micro_usd": 2,
+    "sent": 10,
+    "served": 5,
+    "spent_micro_usd": 5
+  },
+  "client_error": {
+    "calls": {
+      "provider-a": 1,
+      "provider-b": 0
+    },
+    "held_micro_usd": 0,
+    "provider": null,
+    "spent_micro_usd": 0,
+    "status": 400,
+    "streamed": false
+  },
+  "failover": {
+    "calls": {
+      "provider-a": 1,
+      "provider-b": 1
+    },
+    "held_micro_usd": 0,
+    "provider": "provider-b",
+    "spent_micro_usd": 1,
+    "status": 200,
+    "streamed": false
+  },
+  "generated_at": 1791191072,
+  "host": "macos aarch64",
+  "money": {
+    "expected_micro_usd": 100,
+    "requests": 100,
+    "sample_rate": 1000,
+    "served_as_measured": 0,
+    "spent_micro_usd": 100,
+    "uncovered": 0
+  },
+  "no_double_charge": {
+    "calls": {
+      "provider-a": 1,
+      "provider-b": 0
+    },
+    "held_micro_usd": 0,
+    "provider": null,
+    "spent_micro_usd": 0,
+    "status": 502,
+    "streamed": false
+  },
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "streaming": {
+    "calls": {
+      "provider-a": 1
+    },
+    "held_micro_usd": 0,
+    "provider": "provider-a",
+    "spent_micro_usd": 0,
+    "status": 200,
+    "streamed": true
+  }
+}

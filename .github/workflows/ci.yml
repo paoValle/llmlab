@@ -1,0 +1,36 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - run: cargo test --all-targets
+
+      # the lab is the deliverable: if it does not run, the numbers in
+      # reports/latest.md are somebody's memory, not a measurement
+      - run: cargo run --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: report
+          path: reports/

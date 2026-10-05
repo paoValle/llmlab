@@ -1,0 +1,21 @@
+# Only ignores what is noise for this project.
+
+# --- secrets: there must be none in a lab that never calls anyone ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- OS / editor ---
+.DS_Store
+.idea/
+.vscode/*
+*.swp
+*~
+
+# --- artifacts ---
+/tmp/
+*.log
+# binaries and artifacts: the reports are committed on purpose, these are not
+/target/
