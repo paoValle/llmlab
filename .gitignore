@@ -17,5 +17,6 @@
 # --- artifacts ---
 /tmp/
 *.log
+node_modules/
 # binaries and artifacts: the reports are committed on purpose, these are not
 /target/

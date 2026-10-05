@@ -14,7 +14,8 @@ categories = ["development-tools::testing"]
 # Cargo.lock pins the exact revision it measured.
 [dependencies]
 llmgateway = { git = "https://github.com/paoValle/llmgateway" }
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+axum = { version = "0.8", features = ["json", "tokio", "http1"] }
 futures-util = "0.3"
 serde_json = "1"
 

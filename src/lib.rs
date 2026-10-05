@@ -20,7 +20,10 @@
 //! adapter and the agent side (an `agentloop` run driving this over the wire) are not
 //! here yet — see the README.
 
+pub mod e2e;
+
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -426,6 +429,8 @@ pub struct Report {
     pub money: MoneyRun,
     /// Scenario: streaming is not accumulated.
     pub streaming: SingleRun,
+    /// Scenario: a real agent, over a real socket, through this gateway.
+    pub e2e: Option<e2e::E2eRun>,
 }
 
 /// Runs every scenario. This is the whole lab.
@@ -509,6 +514,7 @@ pub async fn run_lab() -> Report {
         no_double_charge,
         money: scenario_money(100, 1_000).await,
         streaming,
+        e2e: Some(e2e::scenario_e2e(Path::new(".")).await),
     }
 }
 
@@ -616,6 +622,8 @@ counter, and never the other way round.
 Zero, and it is declared rather than surprising: the usage of a streamed response arrives
 in its last chunk, which the gateway never buffers, so the cost of a stream is metered
 downstream by the client.
+
+{e2e}
 ",
             generated = self.generated_at,
             host = self.host,
@@ -649,6 +657,10 @@ downstream by the client.
             stream_status = self.streaming.status,
             stream_streamed = self.streaming.streamed,
             stream_spent = usd(self.streaming.spent),
+            e2e = self
+                .e2e
+                .as_ref()
+                .map_or_else(String::new, e2e::E2eRun::markdown),
         )
     }
 
@@ -690,6 +702,21 @@ downstream by the client.
                 "uncovered": self.money.uncovered,
             },
             "streaming": single(&self.streaming),
+            "e2e": match &self.e2e {
+                None => serde_json::Value::Null,
+                Some(run) => serde_json::json!({
+                    "ran": run.ran,
+                    "skip_reason": run.skip_reason,
+                    "gateway_spent_micro_usd": run.gateway_spent,
+                    "agent_spent_micro_usd": run.agent.spent_micro_usd,
+                    "difference_micro_usd": run.difference(),
+                    "steps": run.agent.steps,
+                    "stop_reason": run.agent.stop_reason,
+                    "replay_equal": run.agent.replay_equal,
+                    "provider_calls": run.provider_calls,
+                    "denied_label": run.denied.as_ref().and_then(|d| d.error.clone()),
+                }),
+            },
         });
         serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_owned())
     }
