@@ -20,6 +20,18 @@
     "status": 400,
     "streamed": false
   },
+  "e2e": {
+    "agent_spent_micro_usd": 1,
+    "denied_label": "PolicyError",
+    "difference_micro_usd": 0,
+    "gateway_spent_micro_usd": 1,
+    "provider_calls": 1,
+    "ran": true,
+    "replay_equal": true,
+    "skip_reason": null,
+    "steps": 1,
+    "stop_reason": "end_turn"
+  },
   "failover": {
     "calls": {
       "provider-a": 1,
@@ -31,7 +43,7 @@
     "status": 200,
     "streamed": false
   },
-  "generated_at": 1791191072,
+  "generated_at": 1791196013,
   "host": "macos aarch64",
   "money": {
     "expected_micro_usd": 100,

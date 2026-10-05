@@ -634,7 +634,7 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 [[package]]
 name = "llmgateway"
 version = "0.1.0"
-source = "git+https://github.com/paoValle/llmgateway#1b787d5f29773a579298446b6d4ecb8c86b8c168"
+source = "git+https://github.com/paoValle/llmgateway#0122fbffb70d596a39acbfade04b2e0698f27580"
 dependencies = [
  "axum",
  "futures-util",
@@ -653,6 +653,7 @@ dependencies = [
 name = "llmlab"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "futures-util",
  "llmgateway",
  "serde_json",

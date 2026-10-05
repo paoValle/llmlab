@@ -1,0 +1,13 @@
+{
+  "name": "@paovalle/llmlab-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The agent side of llmlab: a real agentloop run through the gateway.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
+}

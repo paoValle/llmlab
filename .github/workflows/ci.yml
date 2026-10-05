@@ -23,6 +23,16 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+
+      # The agent half of the vertical, as a sibling checkout: the lab imports it by path
+      # rather than by package, because it is a source-only repository.
+      - name: the agent
+        run: |
+          git clone --depth 1 https://github.com/paoValle/agentloop.git ../agentloop
+          npm ci
+
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --all-targets
@@ -30,6 +40,24 @@ jobs:
       # the lab is the deliverable: if it does not run, the numbers in
       # reports/latest.md are somebody's memory, not a measurement
       - run: cargo run --release
+
+      # and the claim it exists for, asserted instead of described
+      - name: the two accountings must agree
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          report = json.load(open("reports/latest.json"))
+          e2e = report.get("e2e") or {}
+          if not e2e.get("ran"):
+              sys.exit(f"the vertical did not run: {e2e.get('skip_reason')}")
+          difference = e2e.get("difference_micro_usd")
+          if difference != 0:
+              sys.exit(f"the gateway and the agent disagree by {difference} µUSD")
+          if not e2e.get("replay_equal"):
+              sys.exit("the agent's own trace did not replay identically")
+          print(f"reconciliation: {e2e['gateway_spent_micro_usd']} µUSD on both sides")
+          PY
+
       - uses: actions/upload-artifact@v4
         with:
           name: report
