@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    # Minors are merged when CI is green; a major is a decision, not a bump.
+    # `llmgateway` comes in as a git dependency: Cargo.lock pins the exact revision the lab
+    # measured, so an update here is a new measurement and has to be reviewed as one.
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
