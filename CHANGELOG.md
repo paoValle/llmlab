@@ -5,6 +5,16 @@ versioning [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The fake provider is not this repo's any more. The behaviours, the script, the counters and the
+  body builders come from [`test-provider`](https://github.com/paoValle/test-provider); `src/lib.rs`
+  keeps the adapter onto `llmgateway`'s `Upstream` and `src/e2e.rs` uses its HTTP transport. `axum`
+  and `futures-util` leave this crate's own dependency list (axum still arrives through the shared
+  transports, so the binary still links it), and the lab no longer binds a listener itself.
+- `Behavior` is re-exported from `test-provider`, so `SentUnknown` is spelled
+  `SentWithoutResponse`, and the two failure modes no longer carry a transport kind (the kind is
+  the consumer's vocabulary, not the fake's).
+
 ## [0.1.0] - 2026-10-05
 
 First version: six scenarios measured in process, and one that runs a real agent over a socket.

@@ -223,7 +223,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -653,10 +653,9 @@ dependencies = [
 name = "llmlab"
 version = "0.1.0"
 dependencies = [
- "axum",
- "futures-util",
  "llmgateway",
  "serde_json",
+ "test-provider",
  "tokio",
 ]
 
@@ -814,7 +813,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1183,6 +1182,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
+]
+
+[[package]]
+name = "test-provider"
+version = "0.1.0"
+source = "git+https://github.com/paoValle/test-provider#e1c7b3ca27fe24b1f90e866eaf5d581d417f3c6e"
+dependencies = [
+ "axum",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
