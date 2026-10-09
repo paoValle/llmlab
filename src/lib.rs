@@ -24,8 +24,7 @@ pub mod e2e;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use llmgateway::auth::Authenticator;
@@ -49,40 +48,20 @@ pub const KEY: &str = "sk-acme";
 /// The model every scenario asks for.
 pub const MODEL: &str = "gpt-4o-mini";
 
-/// What a fake provider is told to do, one entry per call. The last entry repeats.
-#[derive(Debug, Clone)]
-pub enum Behavior {
-    /// A `200` whose body carries the usage the gateway meters.
-    Ok {
-        /// The text of the completion.
-        content: String,
-        /// Prompt tokens the provider reports.
-        prompt_tokens: u64,
-        /// Completion tokens the provider reports.
-        completion_tokens: u64,
-    },
-    /// Any status and body, forwarded to the client as they are.
-    Responds {
-        /// The HTTP status.
-        status: u16,
-        /// The raw body.
-        body: String,
-    },
-    /// Nothing comes back, and the request **did not leave** the gateway.
-    NotSent,
-    /// Nothing comes back, and the request **did leave**: retrying may charge twice.
-    SentUnknown,
-    /// A `200` in chunks, never accumulated into one body.
-    Stream(Vec<String>),
-}
+/// The fake provider, from the shared crate: behaviours as data, the script and the counters.
+///
+/// A lab that measured a copy of the gateway through a copy of a fake provider would measure
+/// nothing. The behaviours and the transport live in `test-provider`; what is here is the glue
+/// onto `llmgateway`'s `Upstream`, which is the only part that cannot be shared.
+pub use test_provider::Behavior;
+use test_provider::{Answer, Provider as Script};
 
 /// A provider that does exactly what it is told and counts how many times.
 #[derive(Debug)]
 pub struct FakeProvider {
     name: String,
     models: Option<Vec<String>>,
-    behaviors: Mutex<Vec<Behavior>>,
-    calls: AtomicUsize,
+    script: Script,
 }
 
 impl FakeProvider {
@@ -92,8 +71,7 @@ impl FakeProvider {
         Self {
             name: name.to_owned(),
             models: None,
-            behaviors: Mutex::new(behaviors),
-            calls: AtomicUsize::new(0),
+            script: Script::new(behaviors),
         }
     }
 
@@ -108,22 +86,7 @@ impl FakeProvider {
     /// How many times the provider was actually called.
     #[must_use]
     pub fn calls(&self) -> usize {
-        self.calls.load(Ordering::SeqCst)
-    }
-
-    fn next(&self) -> Behavior {
-        let mut list = self.behaviors.lock().expect("behaviors lock");
-        if list.is_empty() {
-            return Behavior::Ok {
-                content: "ok".to_owned(),
-                prompt_tokens: 1_000,
-                completion_tokens: 500,
-            };
-        }
-        if list.len() == 1 {
-            return list[0].clone();
-        }
-        list.remove(0)
+        self.script.calls()
     }
 }
 
@@ -138,35 +101,26 @@ impl Upstream for FakeProvider {
 
     fn send(
         &self,
-        _request: UpstreamRequest,
+        request: UpstreamRequest,
         _timeout: Duration,
     ) -> BoxFuture<'_, Result<UpstreamResponse, TransportError>> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        let behavior = self.next();
+        let answer = self.script.answer(&request.body);
         let name = self.name.clone();
 
         boxed(move || async move {
-            match behavior {
-                Behavior::Ok {
-                    content,
-                    prompt_tokens,
-                    completion_tokens,
-                } => Ok(UpstreamResponse::buffered(
-                    200,
-                    ok_body(&content, prompt_tokens, completion_tokens),
+            match answer {
+                Answer::Responded { status, body } => Ok(UpstreamResponse::buffered(status, body)),
+                Answer::Streamed { status, chunks } => Ok(UpstreamResponse::streaming(
+                    status,
+                    chunks.into_iter().map(String::into_bytes).collect(),
                 )),
-                Behavior::Responds { status, body } => Ok(UpstreamResponse::buffered(status, body)),
-                Behavior::NotSent => Err(TransportError::not_sent(
+                Answer::NotSent => Err(TransportError::not_sent(
                     TransportKind::Connect,
                     format!("{name} refused the connection"),
                 )),
-                Behavior::SentUnknown => Err(TransportError::maybe_sent(
+                Answer::SentWithoutResponse => Err(TransportError::maybe_sent(
                     TransportKind::Timeout,
                     format!("{name} timed out after receiving the request"),
-                )),
-                Behavior::Stream(chunks) => Ok(UpstreamResponse::streaming(
-                    200,
-                    chunks.into_iter().map(String::into_bytes).collect(),
                 )),
             }
         })
@@ -477,7 +431,10 @@ pub async fn run_lab() -> Report {
     )
     .await;
 
-    let lost = Arc::new(FakeProvider::new("provider-a", vec![Behavior::SentUnknown]));
+    let lost = Arc::new(FakeProvider::new(
+        "provider-a",
+        vec![Behavior::SentWithoutResponse],
+    ));
     let good = Arc::new(FakeProvider::new("provider-b", healthy()));
     let no_double_charge = run_one(
         &lab(vec![lost.clone(), good.clone()], usd(1.0).unwrap(), 1, 4),
@@ -731,14 +688,6 @@ fn rustc_version() -> String {
         .map_or_else(|| "rustc unknown".to_owned(), |v| v.trim().to_owned())
 }
 
-fn ok_body(content: &str, prompt_tokens: u64, completion_tokens: u64) -> String {
-    serde_json::json!({
-        "choices": [{"message": {"content": content}}],
-        "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens}
-    })
-    .to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -807,7 +756,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_request_that_may_have_been_executed_is_not_retried() {
-        let a = Arc::new(FakeProvider::new("provider-a", vec![Behavior::SentUnknown]));
+        let a = Arc::new(FakeProvider::new(
+            "provider-a",
+            vec![Behavior::SentWithoutResponse],
+        ));
         let b = Arc::new(FakeProvider::new(
             "provider-b",
             vec![Behavior::Ok {

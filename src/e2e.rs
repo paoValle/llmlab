@@ -26,16 +26,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
-use axum::body::Bytes;
-use axum::extract::State;
-use axum::http::{header, HeaderMap, StatusCode};
-use axum::response::{IntoResponse, Response};
-use axum::routing::post;
-use axum::Router;
 use llmgateway::auth::Authenticator;
 use llmgateway::budget::{BudgetRegistry, Month, TenantBudget};
 use llmgateway::gateway::{Gateway, GatewayConfig};
@@ -46,9 +39,9 @@ use llmgateway::pricing::{micros, Price, PriceTable};
 use llmgateway::router::Router as ModelRouter;
 use llmgateway::upstream::Upstream;
 use llmgateway::{usd, MicroUsd};
-use tokio::net::TcpListener;
+use test_provider::Provider;
 
-use crate::NOW;
+use crate::{Behavior, NOW};
 
 /// The tenant the agent acts as.
 pub const E2E_TENANT: &str = "acme";
@@ -175,87 +168,15 @@ impl E2eRun {
 
 // --- the fake provider, over HTTP -------------------------------------------------------
 
-struct ProviderState {
-    replies: Mutex<Vec<(u16, String)>>,
-    calls: AtomicUsize,
-    bodies: Mutex<Vec<Vec<u8>>>,
-}
-
-async fn start_provider(replies: Vec<(u16, String)>) -> (String, Arc<ProviderState>) {
-    let state = Arc::new(ProviderState {
-        replies: Mutex::new(replies),
-        calls: AtomicUsize::new(0),
-        bodies: Mutex::new(Vec::new()),
-    });
-    let router = Router::new()
-        .route("/v1/chat/completions", post(provider_handler))
-        .with_state(Arc::clone(&state));
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("bind provider");
-    let address = listener.local_addr().expect("provider address");
-    tokio::spawn(async move {
-        let _ = axum::serve(listener, router).await;
-    });
-    (format!("http://{address}/v1"), state)
-}
-
-async fn provider_handler(
-    State(state): State<Arc<ProviderState>>,
-    _headers: HeaderMap,
-    body: Bytes,
-) -> Response {
-    state.calls.fetch_add(1, Ordering::SeqCst);
-    state.bodies.lock().expect("bodies").push(body.to_vec());
-    let reply = {
-        let mut replies = state.replies.lock().expect("replies");
-        if replies.len() == 1 {
-            replies[0].clone()
-        } else {
-            replies.remove(0)
-        }
-    };
-
-    // A real provider echoes the model it served. Doing it here is not cosmetic: without it the
-    // agent's trace records `model: "unknown"` and its own replay diverges from the original run,
-    // because the recorded policy is labelled with what the provider reported. The lab found
-    // that, which is the sort of thing a lab is for.
-    let model = serde_json::from_slice::<serde_json::Value>(&body)
-        .ok()
-        .and_then(|value| {
-            value
-                .get("model")
-                .and_then(|m| m.as_str())
-                .map(str::to_owned)
-        })
-        .unwrap_or_else(|| "unknown".to_owned());
-    let body = match serde_json::from_str::<serde_json::Value>(&reply.1) {
-        Ok(mut value) => {
-            if let Some(object) = value.as_object_mut() {
-                object.insert("model".to_owned(), serde_json::Value::String(model));
-            }
-            value.to_string()
-        }
-        Err(_) => reply.1.clone(),
-    };
-
-    (
-        StatusCode::from_u16(reply.0).unwrap_or(StatusCode::OK),
-        [(header::CONTENT_TYPE, "application/json")],
-        body,
-    )
-        .into_response()
-}
-
-fn usage_body(content: &str, prompt: u64, completion: u64) -> String {
-    // serde_json, not a hand-escaped raw string: the first version of this file had four
-    // escaped closing braces in a row and one too few, which is exactly the bug I had already
-    // fixed once in this repo
-    serde_json::json!({
-        "choices": [{"message": {"content": content}}],
-        "usage": {"prompt_tokens": prompt, "completion_tokens": completion}
-    })
-    .to_string()
+/// Serves a scripted provider on a loopback port, and returns the base URL to point a client at.
+///
+/// The server, the route and the model echo come from `test-provider`. This lab found the echo by
+/// running the copy of this provider that did not have it; keeping a second copy would let it
+/// forget again.
+async fn start_provider(behaviors: Vec<Behavior>) -> (String, Arc<Provider>) {
+    let provider = Arc::new(Provider::new(behaviors));
+    let url = test_provider::http::serve(Arc::clone(&provider)).await;
+    (url, provider)
 }
 
 fn prices() -> PriceTable {
@@ -386,11 +307,8 @@ pub async fn scenario_e2e(workspace: &Path) -> E2eRun {
     }
     // 1. the happy path: two steps, one provider, plenty of budget.
     let (provider_url, provider) = start_provider(vec![
-        (
-            200,
-            usage_body("The cheapest is Wizz at 41 euros.", 1_000, 500),
-        ),
-        (200, usage_body("Wizz, at 41 euros.", 1_000, 500)),
+        Behavior::usage("The cheapest is Wizz at 41 euros.", 1_000, 500),
+        Behavior::usage("Wizz, at 41 euros.", 1_000, 500),
     ])
     .await;
     let (gateway_url, meter) = serve_gateway(provider_url, usd(1.0).expect("cap")).await;
@@ -402,24 +320,25 @@ pub async fn scenario_e2e(workspace: &Path) -> E2eRun {
                 skip_reason: Some(reason),
                 gateway_spent: meter.spent(E2E_TENANT),
                 agent: skipped_agent(),
-                provider_calls: provider.calls.load(Ordering::SeqCst),
+                provider_calls: provider.calls(),
                 denied: None,
             }
         }
     };
     let gateway_spent = meter.spent(E2E_TENANT);
-    let provider_calls = provider.calls.load(Ordering::SeqCst);
+    let provider_calls = provider.calls();
 
     // 2. the same run for a tenant whose budget is already exhausted: the gateway must refuse
     //    it before the provider is called, and the runtime must surface that refusal.
-    let (provider_url, denied_provider) = start_provider(vec![(
-        200,
-        usage_body("this should never be sent", 1_000, 500),
+    let (provider_url, denied_provider) = start_provider(vec![Behavior::usage(
+        "this should never be sent",
+        1_000,
+        500,
     )])
     .await;
     let (gateway_url, _) = serve_gateway(provider_url, micros(0)).await;
     let denied = run_agent(workspace, &gateway_url, "denied").ok();
-    let denied_calls = denied_provider.calls.load(Ordering::SeqCst);
+    let denied_calls = denied_provider.calls();
     if denied_calls != 0 {
         // the whole point of the cap: a refused request must not reach anyone
         eprintln!(

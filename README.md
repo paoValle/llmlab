@@ -38,13 +38,13 @@ invariants, so a regression fails the build instead of quietly changing the repo
 
 ```
                   scenarios 1-6                        scenario 7
-        FakeProvider (in-process Upstream)      agentloop (tsx, real process)
+        FakeProvider (→ test-provider)          agentloop (tsx, real process)
                     │                                    │ HTTP
                     ▼                                    ▼
              Router → Gateway::handle  ◄───────  llmgateway::http (axum)
                     │                                    │ HTTP
                     └──── Budget + Meter                 ▼
-                                                   fake provider (axum)
+                                              test-provider (over HTTP)
 ```
 
 Three properties, because a measurement you cannot trust is worse than no measurement:
@@ -60,6 +60,14 @@ Three properties, because a measurement you cannot trust is worse than no measur
 
 ## What the lab found
 
+- **The fake provider existed three times.** The lab's in-process one, the HTTP one scenario 7
+  needs, and `llmgateway`'s test one: three copies of the same concept, and they had already
+  drifted — the `model` echo below is what one copy learned and the others never did. The
+  behaviours and both transports now live in one crate,
+  [`test-provider`](https://github.com/paoValle/test-provider); each consumer keeps only the
+  adapter onto its own trait. The one provider that stays separate on purpose is the wire-level
+  one in `llmgateway`'s `tests/http.rs`, which needs a hang, the request headers and a hand-built
+  streamed body — a fake shared with other projects should not model those.
 - **A provider that does not echo `model` breaks `agentloop`'s replay.** The gateway records
   what the provider reported; without a `model` in the response the trace says `"unknown"` and
   the replay's recorded policy is labelled differently from the original run, so
@@ -101,7 +109,7 @@ make ci      # fmt + clippy + tests
 
 Without the `agentloop` checkout, scenario 7 is **skipped loudly** in the report rather than
 failing the lab: a lab that breaks because a sibling repository is missing teaches nothing.
-`llmgateway` itself is a Cargo dependency and needs no checkout.
+`llmgateway` and `test-provider` are Cargo dependencies and need no checkout.
 
 ## Scope, declared
 
@@ -119,9 +127,6 @@ Not here, and not claimed:
 
 ## What I would do differently
 
-- The fake provider exists twice: `llmgateway` has one for its unit tests, this repo has one for
-  the lab and now a small HTTP one. Three fakes, one concept: it should be one crate both depend
-  on, and it is not.
 - Scenario 7 shells out to `tsx` and parses one JSON line. It works, and it is the only place
   where a version skew between the two repositories would show up as a confusing failure rather
   than a clear one.

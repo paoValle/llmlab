@@ -11,12 +11,13 @@ keywords = ["llm", "gateway", "budget", "benchmark", "reproducibility"]
 categories = ["development-tools::testing"]
 
 # The gateway is a dependency, not a copy: this lab measures the real code.
-# Cargo.lock pins the exact revision it measured.
+# Cargo.lock pins the exact revision it measured. Same for the fake provider: the behaviours
+# and the two transports are shared with the projects this lab measures, so a behaviour added
+# in one place is not invisible in the other.
 [dependencies]
 llmgateway = { git = "https://github.com/paoValle/llmgateway" }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
-axum = { version = "0.8", features = ["json", "tokio", "http1"] }
-futures-util = "0.3"
+test-provider = { git = "https://github.com/paoValle/test-provider", features = ["http"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 serde_json = "1"
 
 [lints.rust]
