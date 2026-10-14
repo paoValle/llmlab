@@ -79,28 +79,18 @@ Three properties, because a measurement you cannot trust is worse than no measur
   body without a model, while the code answers `400` itself. The behaviour is right (no model
   means no price and no routing, so there is nothing to forward to); the comment now says that.
 
-## The fixtures are real runs, not hand-written JSON
+## The trace is a real run, not hand-written JSON
 
-`fixtures/*.jsonl` came out of `agentloop`'s `run()` with a scripted policy, a fake tool and no
-network: the same scenario, three versions of it, written with `Trace.toJSONL()`. That is why
-they contain the whole event stream — `run.start`, `policy.response`, `budget.settle`,
-`tool.result`, `run.end` — and not only the fields this tool happens to read today:
-
-| fixture | what changed | behaviour | money |
-|---|---|---|---|
-| `baseline.jsonl` | — | `b91a763c` | 10 µUSD |
-| `pricier.jsonl` | twice the tokens, same decisions | `b91a763c` | 18 µUSD |
-| `worse.jsonl` | the agent loops and never answers | `589e7bb9` | 3 µUSD |
-
-`reports/agent-happy.jsonl` is the same idea at the top of the stack: the trace of the real
-agent in scenario 7, as produced by the run — which makes it food for
-[`traceset`](https://github.com/paoValle/traceset), the tool that turns traces into regression
-tests.
+`reports/agent-happy.jsonl` is the trace of the real agent in scenario 7, as the run produced it,
+written with `Trace.toJSONL()`: the whole event stream — `run.start`, `policy.request`,
+`policy.response`, `budget.settle`, `run.end` — and not only the fields anything reads today.
+That makes it food for [`traceset`](https://github.com/paoValle/traceset), the tool that turns
+traces into regression tests. The three versions of this idea — same decisions at twice the
+tokens, and a run that never answers — are `traceset`'s own `fixtures/*.jsonl`.
 
 ## Usage
 
 ```bash
-git clone https://github.com/paoValle/llmgateway.git ../llmgateway   # the dependency, as a sibling
 git clone https://github.com/paoValle/agentloop.git  ../agentloop    # the agent for scenario 7
 npm ci                                                              # tsx, for the agent
 make lab     # writes reports/latest.md and reports/latest.json
