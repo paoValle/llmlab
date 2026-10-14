@@ -801,7 +801,11 @@ mod tests {
         assert_eq!(run.spent, 0, "usage on a stream is metered downstream");
     }
 
-    #[tokio::test]
+    // Scenario 7 runs an agent as a child process, and the Rust side waits for it with a blocking
+    // `Command::output()`. On the default single-thread runtime that blocks the only worker, so the
+    // gateway is never polled, the agent times out, and 31 seconds of nothing passed as a test:
+    // the assertion below is what makes that impossible. Scenario 1-6 are in-process and unaffected.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn the_report_is_generated_and_self_consistent() {
         let report = run_lab().await;
         let markdown = report.markdown();
@@ -820,5 +824,29 @@ mod tests {
             report.client_error.calls
         );
         assert_eq!(report.capped.sent, 10);
+
+        // What "self-consistent" means for the vertical: if it ran at all, it measured a gateway
+        // that was actually reached, it completed, and the two independent accountings agree.
+        let e2e = report.e2e.as_ref().expect("the report carries scenario 7");
+        if e2e.ran {
+            assert!(
+                e2e.provider_calls > 0,
+                "scenario 7 ran but the provider served no request — the gateway was never polled: {:?}",
+                e2e.agent
+            );
+            assert!(
+                e2e.agent.ok,
+                "scenario 7 ran but the agent's run did not complete: {} {:?}",
+                e2e.agent.error.as_deref().unwrap_or("unknown error"),
+                e2e.agent.message
+            );
+            assert_eq!(
+                e2e.difference(),
+                0,
+                "the gateway metered {} µUSD, the agent's own trace says {}",
+                e2e.gateway_spent,
+                e2e.agent.spent_micro_usd
+            );
+        }
     }
 }
