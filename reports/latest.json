@@ -23,6 +23,7 @@
   "e2e": {
     "agent_spent_micro_usd": 1,
     "denied_label": "PolicyError",
+    "denied_provider_calls": 0,
     "difference_micro_usd": 0,
     "gateway_spent_micro_usd": 1,
     "provider_calls": 1,
@@ -43,7 +44,7 @@
     "status": 200,
     "streamed": false
   },
-  "generated_at": 1791196013,
+  "generated_at": 1792048224,
   "host": "macos aarch64",
   "money": {
     "expected_micro_usd": 100,

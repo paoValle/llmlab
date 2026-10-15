@@ -1,6 +1,6 @@
 # llmlab — measured behaviour of the gateway
 
-Generated 1791196013 (unix) · host: macos aarch64 · rustc 1.99.0 (b940084d7 2026-09-28) · llmgateway pinned by Cargo.lock.
+Generated 1792048224 (unix) · host: macos aarch64 · rustc 1.99.0 (b940084d7 2026-09-28) · llmgateway pinned by Cargo.lock.
 
 Every number below comes from running the real gateway code in this process, with a fake
 provider and no network. `make lab` regenerates this file; `cargo test` asserts it again.
@@ -102,7 +102,7 @@ agentloop (TypeScript, real budget, real trace) → HTTP → this gateway → HT
 
 Two implementations of the same arithmetic — TypeScript in the runtime, Rust in the gateway — compute the cost of the same run from the same `usage`. A non-zero difference means one of them is wrong: reconciling a runtime's budget with a gateway's invoice is the whole reason both exist.
 
-The same run for a tenant whose budget is already exhausted: the gateway answered **429**, the provider was not called, and the agent's policy raised `PolicyError` with
+The same run for a tenant whose budget is already exhausted: the gateway answered **429**, the provider served **0** request(s) for it — the number a cap has to keep at zero — and the agent's policy raised `PolicyError` with
 
 > PolicyError: the Policy failed at step 0 <- PolicyError: the provider responded 429 Too Many Requests: {"error":{"message":"monthly budget exhausted","type":"rate_limit_error"}}
 
