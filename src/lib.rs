@@ -671,6 +671,7 @@ downstream by the client.
                     "stop_reason": run.agent.stop_reason,
                     "replay_equal": run.agent.replay_equal,
                     "provider_calls": run.provider_calls,
+                    "denied_provider_calls": run.denied_provider_calls,
                     "denied_label": run.denied.as_ref().and_then(|d| d.error.clone()),
                 }),
             },
@@ -846,6 +847,11 @@ mod tests {
                 "the gateway metered {} µUSD, the agent's own trace says {}",
                 e2e.gateway_spent,
                 e2e.agent.spent_micro_usd
+            );
+            assert_eq!(
+                e2e.denied_provider_calls, 0,
+                "a request the cap refused reached the provider {} time(s)",
+                e2e.denied_provider_calls
             );
         }
     }

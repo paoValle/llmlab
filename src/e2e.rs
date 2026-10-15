@@ -86,6 +86,9 @@ pub struct E2eRun {
     pub agent: AgentRun,
     /// Requests the provider actually served.
     pub provider_calls: usize,
+    /// Requests the *denied* run's provider served. The point of a cap is that this is zero, and
+    /// it is a measurement rather than a sentence in the report, so a leak fails the build.
+    pub denied_provider_calls: usize,
     /// The same run against a cap of one micro-dollar, so the gateway refuses it.
     pub denied: Option<AgentRun>,
 }
@@ -155,9 +158,10 @@ impl E2eRun {
         if let Some(denied) = &self.denied {
             let _ = writeln!(
                 out,
-                "\nThe same run for a tenant whose budget is already exhausted: the gateway answered **429**, the provider was not called, \
+                "\nThe same run for a tenant whose budget is already exhausted: the gateway answered **429**, the provider served **{}** request(s) for it — the number a cap has to keep at zero — \
                  and the agent's policy raised `{}` with\n\n> {}\n\nA cap the runtime cannot talk its way around is a cap; \
                  a 429 that the agent retried as if it were a provider hiccup would not be.\n",
+                self.denied_provider_calls,
                 denied.error.as_deref().unwrap_or("PolicyError"),
                 denied.message.as_deref().unwrap_or("(no message)")
             );
@@ -302,6 +306,7 @@ pub async fn scenario_e2e(workspace: &Path) -> E2eRun {
             gateway_spent: 0,
             agent: skipped_agent(),
             provider_calls: 0,
+            denied_provider_calls: 0,
             denied: None,
         };
     }
@@ -321,6 +326,7 @@ pub async fn scenario_e2e(workspace: &Path) -> E2eRun {
                 gateway_spent: meter.spent(E2E_TENANT),
                 agent: skipped_agent(),
                 provider_calls: provider.calls(),
+                denied_provider_calls: 0,
                 denied: None,
             }
         }
@@ -338,13 +344,10 @@ pub async fn scenario_e2e(workspace: &Path) -> E2eRun {
     .await;
     let (gateway_url, _) = serve_gateway(provider_url, micros(0)).await;
     let denied = run_agent(workspace, &gateway_url, "denied").ok();
-    let denied_calls = denied_provider.calls();
-    if denied_calls != 0 {
-        // the whole point of the cap: a refused request must not reach anyone
-        eprintln!(
-            "WARNING: a request refused by the cap reached the provider {denied_calls} time(s)"
-        );
-    }
+    // the whole point of the cap: a refused request must not reach anyone. It is asserted, not
+    // warned about: the report used to say "the provider was not called" while nothing read the
+    // number, so a leak changed the report not at all.
+    let denied_provider_calls = denied_provider.calls();
 
     E2eRun {
         ran: true,
@@ -352,6 +355,7 @@ pub async fn scenario_e2e(workspace: &Path) -> E2eRun {
         gateway_spent,
         agent,
         provider_calls,
+        denied_provider_calls,
         denied,
     }
 }

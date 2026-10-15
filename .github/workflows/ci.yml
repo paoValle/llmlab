@@ -55,6 +55,11 @@ jobs:
               sys.exit(f"the gateway and the agent disagree by {difference} µUSD")
           if not e2e.get("replay_equal"):
               sys.exit("the agent's own trace did not replay identically")
+          denied_calls = e2e.get("denied_provider_calls")
+          if denied_calls != 0:
+              sys.exit(
+                  f"a request the cap refused reached the provider {denied_calls} time(s)"
+              )
           print(f"reconciliation: {e2e['gateway_spent_micro_usd']} µUSD on both sides")
           PY
 
