@@ -680,6 +680,83 @@ downstream by the client.
     }
 }
 
+/// The fields a report carries about the run rather than about the code.
+///
+/// They change on every run by design, so `--check` compares the numbers and not the
+/// circumstances they were measured in.
+const VOLATILE_FIELDS: [&str; 3] = ["generated_at", "host", "rustc"];
+
+/// Compares a fresh report against the committed one, volatile fields excluded.
+///
+/// One line per difference, `path: committed -> fresh`; an empty vector means the committed
+/// report still describes this code. It is a function and not a flag inside `main` because the
+/// comparison is the part that must be tested, and a test cannot drive a `--check` that reads
+/// the file it is meant to leave alone.
+///
+/// # Errors
+///
+/// A string that does not parse as JSON is an error, not a difference: an unreadable report is
+/// not evidence that the numbers moved.
+pub fn report_differences(committed: &str, fresh: &str) -> Result<Vec<String>, String> {
+    let committed: serde_json::Value = serde_json::from_str(committed)
+        .map_err(|error| format!("the committed report: {error}"))?;
+    let fresh: serde_json::Value =
+        serde_json::from_str(fresh).map_err(|error| format!("this run's report: {error}"))?;
+    let mut differences = Vec::new();
+    diff(&committed, &fresh, "", &mut differences);
+    Ok(differences)
+}
+
+fn diff(
+    committed: &serde_json::Value,
+    fresh: &serde_json::Value,
+    path: &str,
+    out: &mut Vec<String>,
+) {
+    use serde_json::Value;
+    let named = |key: &str| {
+        if path.is_empty() {
+            key.to_owned()
+        } else {
+            format!("{path}.{key}")
+        }
+    };
+    match (committed, fresh) {
+        (Value::Object(a), Value::Object(b)) => {
+            let keys: BTreeSet<&String> = a.keys().chain(b.keys()).collect();
+            for key in keys {
+                if path.is_empty() && VOLATILE_FIELDS.contains(&key.as_str()) {
+                    continue;
+                }
+                match (a.get(key), b.get(key)) {
+                    (Some(x), Some(y)) => diff(x, y, &named(key), out),
+                    (Some(x), None) => out.push(format!("{}: {x} -> missing", named(key))),
+                    (None, Some(y)) => out.push(format!("{}: missing -> {y}", named(key))),
+                    (None, None) => {}
+                }
+            }
+        }
+        (Value::Array(a), Value::Array(b)) => {
+            if a.len() != b.len() {
+                out.push(format!(
+                    "{path}: {} item(s) -> {} item(s)",
+                    a.len(),
+                    b.len()
+                ));
+                return;
+            }
+            for (index, (x, y)) in a.iter().zip(b).enumerate() {
+                diff(x, y, &format!("{path}[{index}]"), out);
+            }
+        }
+        _ if committed == fresh => {}
+        _ => out.push(format!(
+            "{}: {committed} -> {fresh}",
+            if path.is_empty() { "(root)" } else { path }
+        )),
+    }
+}
+
 fn rustc_version() -> String {
     std::process::Command::new("rustc")
         .arg("--version")
@@ -800,6 +877,65 @@ mod tests {
         assert_eq!(run.status, 200);
         assert!(run.streamed, "the stream must not become a whole body");
         assert_eq!(run.spent, 0, "usage on a stream is metered downstream");
+    }
+
+    #[test]
+    fn the_check_compares_the_numbers_and_not_the_circumstances() {
+        let committed = r#"{"generated_at": 1, "host": "macos", "rustc": "rustc 1.0",
+            "capped": {"sent": 10, "spent_micro_usd": 5}, "e2e": null}"#;
+        let fresh = r#"{"generated_at": 2, "host": "linux", "rustc": "rustc 1.1",
+            "capped": {"sent": 10, "spent_micro_usd": 5}, "e2e": null}"#;
+        assert!(
+            report_differences(committed, fresh)
+                .expect("both reports parse")
+                .is_empty(),
+            "a different moment, host and compiler are not a different measurement"
+        );
+
+        let moved = fresh.replace(r#""sent": 10"#, r#""sent": 9"#);
+        assert_eq!(
+            report_differences(committed, &moved).expect("both reports parse"),
+            vec!["capped.sent: 10 -> 9".to_owned()],
+            "a number that moved must be named, with the path to it"
+        );
+
+        assert!(
+            report_differences(committed, "not json").is_err(),
+            "an unreadable report is an error, not a difference"
+        );
+
+        // a key on one side only, and a value that changed type, are differences too
+        let dropped = fresh.replace(r#", "e2e": null"#, "");
+        assert_eq!(
+            report_differences(committed, &dropped).expect("both reports parse"),
+            vec!["e2e: null -> missing".to_owned()]
+        );
+        let retyped = fresh.replace(r#""sent": 10"#, r#""sent": "10""#);
+        assert_eq!(
+            report_differences(committed, &retyped).expect("both reports parse"),
+            vec!["capped.sent: 10 -> \"10\"".to_owned()]
+        );
+
+        // `host` at the top is the machine the run happened on; `host` inside a scenario would
+        // be a datum, so the exclusion is root-scoped and not a rule for the whole tree
+        assert_eq!(
+            report_differences(r#"{"capped": {"host": 1}}"#, r#"{"capped": {"host": 2}}"#)
+                .expect("both reports parse"),
+            vec!["capped.host: 1 -> 2".to_owned()]
+        );
+
+        // arrays are not in today's report, and a diff that cannot walk one would be silent
+        // the day one arrives
+        assert_eq!(
+            report_differences(r#"{"calls": [1, 2]}"#, r#"{"calls": [1, 3]}"#)
+                .expect("both reports parse"),
+            vec!["calls[1]: 2 -> 3".to_owned()]
+        );
+        assert_eq!(
+            report_differences(r#"{"calls": [1, 2]}"#, r#"{"calls": [1]}"#)
+                .expect("both reports parse"),
+            vec!["calls: 2 item(s) -> 1 item(s)".to_owned()]
+        );
     }
 
     // Scenario 7 runs an agent as a child process, and the Rust side waits for it with a blocking

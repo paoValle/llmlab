@@ -5,6 +5,12 @@ versioning [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `--check` (and `make check`): runs the lab, compares the numbers with the committed
+  `reports/latest.json` and exits `1` naming every field that moved. It reads that file and never
+  writes it, so CI can fail on a stale report instead of trusting it; `generated_at`, `host` and
+  `rustc` are excluded, because they are facts about the run and not about the code.
+
 ### Changed
 - The fake provider is not this repo's any more. The behaviours, the script, the counters and the
   body builders come from [`test-provider`](https://github.com/paoValle/test-provider); `src/lib.rs`

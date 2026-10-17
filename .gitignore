@@ -20,3 +20,6 @@
 node_modules/
 # binaries and artifacts: the reports are committed on purpose, these are not
 /target/
+# scenario 7 writes the trace of the run it measures: `agent-happy.jsonl` is published, the
+# refused run's is not
+/reports/agent-denied.jsonl
