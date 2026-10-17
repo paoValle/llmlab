@@ -37,6 +37,10 @@ jobs:
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo test --all-targets
 
+      # the committed numbers must still be the ones this code produces: a change in the
+      # gateway that nobody reran `make lab` for fails here, not in a reader's trust
+      - run: cargo run --release -- --check
+
       # the lab is the deliverable: if it does not run, the numbers in
       # reports/latest.md are somebody's memory, not a measurement
       - run: cargo run --release
